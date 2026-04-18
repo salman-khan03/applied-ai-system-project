@@ -1,6 +1,7 @@
-"""
-Game Glitch Investigator — Applied AI Edition
-Extended from Module 1 with: RAG hints, agentic planning, guardrails, logging.
+"""Game Glitch Investigator — Applied AI Edition.
+
+Extended from Module 1 with RAG hints, few-shot specialization,
+agentic planning, guardrails, and reliability logging.
 """
 
 import random
@@ -20,6 +21,7 @@ from rag_retriever import (
     format_tips_for_display,
     get_query_tags_for_state,
 )
+from ai_assistant import list_modes, get_mode_label
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -31,38 +33,51 @@ st.set_page_config(
 api_ok, api_msg = check_api_key_configured()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-st.sidebar.title("⚙️ Settings")
+st.sidebar.title("Settings")
 difficulty = st.sidebar.selectbox("Difficulty", ["Easy", "Normal", "Hard"], index=1)
 
 attempt_limits = {"Easy": 6, "Normal": 8, "Hard": 5}
 attempt_limit = attempt_limits[difficulty]
 low, high = get_range_for_difficulty(difficulty)
-
-st.sidebar.caption(f"Range: **{low}–{high}** | Max attempts: **{attempt_limit}**")
+st.sidebar.caption(f"Range: **{low}-{high}** | Max attempts: **{attempt_limit}**")
 
 st.sidebar.divider()
-st.sidebar.subheader("🤖 AI Status")
+st.sidebar.subheader("AI Mode")
+mode_keys = list_modes()
+mode_labels = [get_mode_label(m) for m in mode_keys]
+selected_label = st.sidebar.radio("Hint style:", mode_labels, index=0)
+ai_mode = mode_keys[mode_labels.index(selected_label)]
+
+_mode_desc = {
+    "coach": "Encouraging tone with game analogies.",
+    "analyst": "Precise, mathematical, probability-based.",
+}
+st.sidebar.caption(_mode_desc.get(ai_mode, ""))
+
+st.sidebar.divider()
+st.sidebar.subheader("AI Status")
 if api_ok:
     st.sidebar.success("AI features enabled")
 else:
     st.sidebar.warning("AI disabled — set ANTHROPIC_API_KEY")
 
 st.sidebar.divider()
-st.sidebar.subheader("📚 Debug Knowledge Base")
+st.sidebar.subheader("Debug Knowledge Base")
 tag_options = ["strategy", "binary_search", "range", "bug", "hard", "scoring", "guide"]
-selected_tags = st.sidebar.multiselect("Filter tips by topic:", tag_options, default=["strategy"])
+selected_tags = st.sidebar.multiselect("Filter tips:", tag_options, default=["strategy"])
 if selected_tags:
     tips = retrieve_relevant_docs(selected_tags, top_k=2)
     st.sidebar.markdown(format_tips_for_display(tips))
 
 # ── Session state init ────────────────────────────────────────────────────────
-_defaults = {
-    "secret": None,         # set after difficulty-aware init
+_defaults: dict = {
+    "secret": None,
     "attempts": 0,
     "score": 0,
-    "status": "playing",    # "playing" | "won" | "lost"
+    "status": "playing",
     "history": [],
     "ai_hint": "",
+    "ai_hint_mode": "",
     "ai_requests": 0,
     "agent_result": None,
     "post_analysis": "",
@@ -72,34 +87,35 @@ for k, v in _defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# Reset when difficulty changes
 if st.session_state.last_difficulty != difficulty:
     for k in list(st.session_state.keys()):
         del st.session_state[k]
     st.rerun()
 
-# Lazy secret init (after difficulty is locked in)
 if st.session_state.secret is None:
     st.session_state.secret = random.randint(low, high)
     st.session_state.last_difficulty = difficulty
 
 
-def reset_game():
-    """Full game reset preserving difficulty."""
+def reset_game() -> None:
+    """Full game reset."""
     for k in list(st.session_state.keys()):
         del st.session_state[k]
     st.rerun()
 
 
 # ── Layout ────────────────────────────────────────────────────────────────────
-st.title("🎮 Game Glitch Investigator — Applied AI Edition")
-st.caption("Module 1 base project extended with RAG hints, agentic planning, and reliability guardrails.")
+st.title("Game Glitch Investigator - Applied AI Edition")
+st.caption(
+    "Module 1 base extended with RAG hints, few-shot specialization, "
+    "agentic planning, and reliability guardrails."
+)
 
 col_game, col_ai = st.columns([3, 2])
 
 # ── GAME COLUMN ───────────────────────────────────────────────────────────────
 with col_game:
-    st.subheader("🕹️ Guess the Number")
+    st.subheader("Guess the Number")
 
     attempts_used = st.session_state.attempts
     attempts_left = attempt_limit - attempts_used
@@ -109,7 +125,7 @@ with col_game:
         f"Attempts left: **{attempts_left}** | Score: **{st.session_state.score}**"
     )
 
-    with st.expander("🔍 Developer Debug Info"):
+    with st.expander("Developer Debug Info"):
         st.write("Secret:", st.session_state.secret)
         st.write("Attempts used:", attempts_used)
         st.write("Score:", st.session_state.score)
@@ -124,9 +140,9 @@ with col_game:
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        submit = st.button("Submit Guess 🚀", disabled=st.session_state.status != "playing")
+        submit = st.button("Submit Guess", disabled=st.session_state.status != "playing")
     with c2:
-        new_game = st.button("New Game 🔁")
+        new_game = st.button("New Game")
     with c3:
         show_feedback = st.checkbox("Show feedback", value=True)
 
@@ -136,7 +152,7 @@ with col_game:
     # ── Game-over display ─────────────────────────────────────────────────────
     if st.session_state.status == "won":
         st.success(
-            f"🎉 You won! The secret was **{st.session_state.secret}**.  "
+            f"You won! The secret was **{st.session_state.secret}**.  "
             f"Final score: **{st.session_state.score}**"
         )
         if api_ok and not st.session_state.post_analysis:
@@ -152,11 +168,11 @@ with col_game:
             except Exception as e:
                 log_error("post_analysis", e)
         if st.session_state.post_analysis:
-            st.info(f"🤖 **AI Review:** {st.session_state.post_analysis}")
+            st.info(f"AI Review: {st.session_state.post_analysis}")
 
     elif st.session_state.status == "lost":
         st.error(
-            f"💀 Out of attempts! The secret was **{st.session_state.secret}**.  "
+            f"Out of attempts! The secret was **{st.session_state.secret}**.  "
             f"Score: **{st.session_state.score}**"
         )
         if api_ok and not st.session_state.post_analysis:
@@ -172,7 +188,7 @@ with col_game:
             except Exception as e:
                 log_error("post_analysis", e)
         if st.session_state.post_analysis:
-            st.info(f"🤖 **AI Review:** {st.session_state.post_analysis}")
+            st.info(f"AI Review: {st.session_state.post_analysis}")
 
     # ── Submit handler ────────────────────────────────────────────────────────
     elif submit:
@@ -190,8 +206,8 @@ with col_game:
             )
             log_guess(guess_int, outcome, st.session_state.attempts)
 
-            # Clear cached AI state after each guess
             st.session_state.ai_hint = ""
+            st.session_state.ai_hint_mode = ""
             st.session_state.agent_result = None
 
             if show_feedback:
@@ -208,56 +224,71 @@ with col_game:
     # ── Guess history ─────────────────────────────────────────────────────────
     if st.session_state.history:
         st.divider()
-        st.subheader("📋 Guess History")
+        st.subheader("Guess History")
         for i, entry in enumerate(st.session_state.history):
-            icons = {"Win": "✅", "Too High": "🔴", "Too Low": "🔵"}
-            icon = icons.get(entry["outcome"], "❓")
-            st.write(f"{icon} Attempt {i+1}: **{entry['guess']}** → {entry['outcome']}")
+            icons = {"Win": "[WIN]", "Too High": "[HIGH]", "Too Low": "[LOW]"}
+            icon = icons.get(entry["outcome"], "?")
+            st.write(f"{icon} Attempt {i + 1}: **{entry['guess']}** -> {entry['outcome']}")
 
 # ── AI COLUMN ─────────────────────────────────────────────────────────────────
 with col_ai:
-    st.subheader("🤖 AI Assistant")
+    st.subheader("AI Assistant")
+    st.caption(f"Active mode: **{get_mode_label(ai_mode)}**")
 
     if not api_ok:
         st.warning(api_msg)
         st.markdown(
-            "To enable AI features, set your API key:  \n"
+            "To enable AI features, set your API key:\n"
             "```\nexport ANTHROPIC_API_KEY=sk-ant-...\n```"
         )
     else:
-        # ── RAG-powered AI hint ───────────────────────────────────────────────
+        # ── RAG + few-shot hint ───────────────────────────────────────────────
         rate_ok, rate_msg = rate_limit_check(st.session_state.ai_requests)
         hint_disabled = not rate_ok or st.session_state.status != "playing"
 
-        if st.button("💡 Get AI Hint (RAG)", disabled=hint_disabled, help="Uses retrieved strategy documents to generate a hint"):
+        if st.button(
+            "Get AI Hint (RAG + Specialized)",
+            disabled=hint_disabled,
+            help="Retrieves strategy docs (RAG) then responds in your chosen mode (few-shot)",
+        ):
             if not rate_ok:
                 st.warning(rate_msg)
             else:
                 try:
                     from ai_assistant import get_ai_hint
-                    with st.spinner("Retrieving context and generating hint..."):
+                    label = get_mode_label(ai_mode)
+                    with st.spinner(f"Retrieving docs and generating {label} hint..."):
                         hint = get_ai_hint(
                             st.session_state.history,
                             low, high,
                             attempt_limit - st.session_state.attempts,
                             difficulty,
+                            mode=ai_mode,
                         )
                         st.session_state.ai_hint = sanitize_ai_response(hint)
+                        st.session_state.ai_hint_mode = label
                         st.session_state.ai_requests += 1
                 except Exception as e:
                     st.error(f"AI hint failed: {e}")
 
         if st.session_state.ai_hint:
-            st.info(f"💬 {st.session_state.ai_hint}")
-            st.caption(f"AI requests used: {st.session_state.ai_requests}/15")
+            st.info(st.session_state.ai_hint)
+            st.caption(
+                f"Mode: {st.session_state.ai_hint_mode} | "
+                f"Requests: {st.session_state.ai_requests}/15"
+            )
 
         st.divider()
 
         # ── Agentic planner ───────────────────────────────────────────────────
-        st.subheader("🧠 Agentic Planner")
+        st.subheader("Agentic Planner")
         agent_disabled = st.session_state.status != "playing"
 
-        if st.button("📊 Run Agent (3-Step Plan)", disabled=agent_disabled, help="Observe → Plan → Reason loop with intermediate steps"):
+        if st.button(
+            "Run Agent (3-Step Plan)",
+            disabled=agent_disabled,
+            help="Observe -> Plan -> Reason loop with visible intermediate steps",
+        ):
             try:
                 from agent import run_agent
                 with st.spinner("Running agent loop..."):
@@ -271,16 +302,20 @@ with col_ai:
             rec = result["final_recommendation"]
             vr = rec["valid_range"]
 
-            st.metric("Valid Range", f"{vr[0]} – {vr[1]}")
+            st.metric("Valid Range", f"{vr[0]} - {vr[1]}")
             st.metric("Optimal Next Guess", rec["optimal_guess"])
 
             conf_pct = int(rec["confidence"] * 100)
             st.progress(conf_pct, text=f"Confidence: {conf_pct}%")
 
-            risk_color = {"low": "green", "medium": "orange", "high": "red"}.get(rec["risk"], "gray")
-            st.markdown(f"Strategy: **{rec['strategy']}** | Risk: :{risk_color}[{rec['risk']}]")
+            risk_color = {"low": "green", "medium": "orange", "high": "red"}.get(
+                rec["risk"], "gray"
+            )
+            st.markdown(
+                f"Strategy: **{rec['strategy']}** | Risk: :{risk_color}[{rec['risk']}]"
+            )
 
-            with st.expander("🔍 View Agent Steps"):
+            with st.expander("View Agent Steps"):
                 for step in result["steps"]:
                     st.json(step)
 
@@ -288,4 +323,7 @@ with col_ai:
                 st.caption(f"Agent reasoning: {rec['reasoning']}")
 
 st.divider()
-st.caption("🤖 Extended from Game Glitch Investigator (CodePath AI 110, Module 1) with Claude claude-haiku-4-5-20251001")
+st.caption(
+    "Extended from Game Glitch Investigator (CodePath AI 110, Module 1) "
+    "with Claude claude-haiku-4-5-20251001"
+)
