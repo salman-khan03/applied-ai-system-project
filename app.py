@@ -1,6 +1,6 @@
 """Game Glitch Investigator — Applied AI Edition.
 
-Extended from Module 1 with RAG hints, few-shot specialization,
+Extended from Module 2 with RAG hints, few-shot specialization,
 agentic planning, guardrails, and reliability logging.
 """
 
@@ -16,12 +16,8 @@ from guardrails import (
     log_guess,
     log_error,
 )
-from rag_retriever import (
-    retrieve_relevant_docs,
-    format_tips_for_display,
-    get_query_tags_for_state,
-)
-from ai_assistant import list_modes, get_mode_label
+from rag_retriever import retrieve_relevant_docs, format_tips_for_display
+from ai_assistant import list_modes, get_mode_label, analyze_game_performance
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -83,13 +79,13 @@ _defaults: dict = {
     "post_analysis": "",
     "last_difficulty": difficulty,
 }
-for k, v in _defaults.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+for default_key, value in _defaults.items():
+    if default_key not in st.session_state:
+        st.session_state[default_key] = value
 
 if st.session_state.last_difficulty != difficulty:
-    for k in list(st.session_state.keys()):
-        del st.session_state[k]
+    for session_key in list(st.session_state.keys()):
+        del st.session_state[session_key]
     st.rerun()
 
 if st.session_state.secret is None:
@@ -99,15 +95,31 @@ if st.session_state.secret is None:
 
 def reset_game() -> None:
     """Full game reset."""
-    for k in list(st.session_state.keys()):
-        del st.session_state[k]
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
     st.rerun()
+
+
+def _show_post_analysis(won: bool) -> None:
+    if api_ok and not st.session_state.post_analysis:
+        try:
+            with st.spinner("Analyzing your performance..."):
+                analysis = analyze_game_performance(
+                    st.session_state.history,
+                    st.session_state.secret,
+                    won, low, high,
+                )
+                st.session_state.post_analysis = sanitize_ai_response(analysis)
+        except (ImportError, RuntimeError, ValueError, TimeoutError) as e:
+            log_error("post_analysis", e)
+    if st.session_state.post_analysis:
+        st.info(f"AI Review: {st.session_state.post_analysis}")
 
 
 # ── Layout ────────────────────────────────────────────────────────────────────
 st.title("Game Glitch Investigator - Applied AI Edition")
 st.caption(
-    "Module 1 base extended with RAG hints, few-shot specialization, "
+    "Module 2 base extended with RAG hints, few-shot specialization, "
     "agentic planning, and reliability guardrails."
 )
 
@@ -117,7 +129,7 @@ col_game, col_ai = st.columns([3, 2])
 with col_game:
     st.subheader("Guess the Number")
 
-    attempts_used = st.session_state.attempts
+    attempts_used = st.session_state.get("attempts", 0)
     attempts_left = attempt_limit - attempts_used
 
     st.info(
@@ -155,40 +167,14 @@ with col_game:
             f"You won! The secret was **{st.session_state.secret}**.  "
             f"Final score: **{st.session_state.score}**"
         )
-        if api_ok and not st.session_state.post_analysis:
-            try:
-                from ai_assistant import analyze_game_performance
-                with st.spinner("Analyzing your performance..."):
-                    analysis = analyze_game_performance(
-                        st.session_state.history,
-                        st.session_state.secret,
-                        True, low, high,
-                    )
-                    st.session_state.post_analysis = sanitize_ai_response(analysis)
-            except Exception as e:
-                log_error("post_analysis", e)
-        if st.session_state.post_analysis:
-            st.info(f"AI Review: {st.session_state.post_analysis}")
+        _show_post_analysis(True)
 
     elif st.session_state.status == "lost":
         st.error(
             f"Out of attempts! The secret was **{st.session_state.secret}**.  "
             f"Score: **{st.session_state.score}**"
         )
-        if api_ok and not st.session_state.post_analysis:
-            try:
-                from ai_assistant import analyze_game_performance
-                with st.spinner("Analyzing your performance..."):
-                    analysis = analyze_game_performance(
-                        st.session_state.history,
-                        st.session_state.secret,
-                        False, low, high,
-                    )
-                    st.session_state.post_analysis = sanitize_ai_response(analysis)
-            except Exception as e:
-                log_error("post_analysis", e)
-        if st.session_state.post_analysis:
-            st.info(f"AI Review: {st.session_state.post_analysis}")
+        _show_post_analysis(False)
 
     # ── Submit handler ────────────────────────────────────────────────────────
     elif submit:
@@ -196,30 +182,31 @@ with col_game:
         if not valid:
             st.error(err)
         else:
-            st.session_state.attempts += 1
+            st.session_state["attempts"] = st.session_state.get("attempts", 0) + 1
             _, guess_int, _ = parse_guess(raw_guess)
 
             outcome, message = check_guess(guess_int, st.session_state.secret)
             st.session_state.history.append({"guess": guess_int, "outcome": outcome})
             st.session_state.score = update_score(
-                st.session_state.score, outcome, st.session_state.attempts
+                st.session_state.score, outcome, st.session_state["attempts"]
             )
-            log_guess(guess_int, outcome, st.session_state.attempts)
+            log_guess(guess_int, outcome, st.session_state["attempts"])
 
             st.session_state.ai_hint = ""
             st.session_state.ai_hint_mode = ""
             st.session_state.agent_result = None
 
-            if show_feedback:
-                if outcome == "Win":
+            if outcome == "Win":
+                st.session_state.status = "won"
+                if show_feedback:
                     st.balloons()
-                    st.session_state.status = "won"
                     st.success(message)
-                elif st.session_state.attempts >= attempt_limit:
-                    st.session_state.status = "lost"
+            elif st.session_state["attempts"] >= attempt_limit:
+                st.session_state.status = "lost"
+                if show_feedback:
                     st.error(message)
-                else:
-                    st.warning(message)
+            elif show_feedback:
+                st.warning(message)
 
     # ── Guess history ─────────────────────────────────────────────────────────
     if st.session_state.history:
@@ -243,50 +230,47 @@ with col_ai:
         )
     else:
         # ── RAG + few-shot hint ───────────────────────────────────────────────
-        rate_ok, rate_msg = rate_limit_check(st.session_state.ai_requests)
-        hint_disabled = not rate_ok or st.session_state.status != "playing"
+        rate_ok, rate_msg = rate_limit_check(st.session_state["ai_requests"])
+        HINT_DISABLED = not rate_ok or st.session_state.status != "playing"
 
         if st.button(
             "Get AI Hint (RAG + Specialized)",
-            disabled=hint_disabled,
+            disabled=HINT_DISABLED,
             help="Retrieves strategy docs (RAG) then responds in your chosen mode (few-shot)",
         ):
-            if not rate_ok:
-                st.warning(rate_msg)
-            else:
-                try:
-                    from ai_assistant import get_ai_hint
-                    label = get_mode_label(ai_mode)
-                    with st.spinner(f"Retrieving docs and generating {label} hint..."):
-                        hint = get_ai_hint(
-                            st.session_state.history,
-                            low, high,
-                            attempt_limit - st.session_state.attempts,
-                            difficulty,
-                            mode=ai_mode,
-                        )
-                        st.session_state.ai_hint = sanitize_ai_response(hint)
-                        st.session_state.ai_hint_mode = label
-                        st.session_state.ai_requests += 1
-                except Exception as e:
-                    st.error(f"AI hint failed: {e}")
+            try:
+                from ai_assistant import get_ai_hint
+                label = get_mode_label(ai_mode)
+                with st.spinner(f"Retrieving docs and generating {label} hint..."):
+                    hint = get_ai_hint(
+                        st.session_state.history,
+                        low, high,
+                        attempt_limit - st.session_state.attempts,
+                        difficulty,
+                        mode=ai_mode,
+                    )
+                    st.session_state.ai_hint = sanitize_ai_response(hint)
+                    st.session_state.ai_hint_mode = label
+                    st.session_state["ai_requests"] += 1
+            except (ImportError, RuntimeError, ValueError) as e:
+                st.error(f"AI hint failed: {e}")
 
         if st.session_state.ai_hint:
             st.info(st.session_state.ai_hint)
             st.caption(
                 f"Mode: {st.session_state.ai_hint_mode} | "
-                f"Requests: {st.session_state.ai_requests}/15"
+                f"Requests: {st.session_state['ai_requests']}/15"
             )
 
         st.divider()
 
         # ── Agentic planner ───────────────────────────────────────────────────
         st.subheader("Agentic Planner")
-        agent_disabled = st.session_state.status != "playing"
+        AGENT_DISABLED = st.session_state.status != "playing"
 
         if st.button(
             "Run Agent (3-Step Plan)",
-            disabled=agent_disabled,
+            disabled=AGENT_DISABLED,
             help="Observe -> Plan -> Reason loop with visible intermediate steps",
         ):
             try:
@@ -294,7 +278,7 @@ with col_ai:
                 with st.spinner("Running agent loop..."):
                     result = run_agent(st.session_state.history, low, high)
                     st.session_state.agent_result = result
-            except Exception as e:
+            except (ImportError, RuntimeError, ValueError) as e:
                 st.error(f"Agent failed: {e}")
 
         if st.session_state.agent_result:
@@ -324,6 +308,6 @@ with col_ai:
 
 st.divider()
 st.caption(
-    "Extended from Game Glitch Investigator (CodePath AI 110, Module 1) "
-    "with Claude claude-haiku-4-5-20251001"
+    "Extended from Game Glitch Investigator (CodePath AI 110, Module 2) "
+    "with claude-haiku-4-5-20251001"
 )
