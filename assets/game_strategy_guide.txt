@@ -1,0 +1,48 @@
+GAME STRATEGY GUIDE: Number Guessing Optimization
+==================================================
+
+BINARY SEARCH STRATEGY
+-----------------------
+The most efficient way to guess a number in range [L, H] is to always pick
+the midpoint: M = (L + H) // 2. This eliminates half the search space each
+turn. For a range of 100 numbers, binary search guarantees a win in at most
+7 guesses (log2(100) ≈ 6.6).
+
+Example:
+  Range: 1-100, secret=73
+  Guess 1: 50 → Too Low  → range becomes 51-100
+  Guess 2: 75 → Too High → range becomes 51-74
+  Guess 3: 62 → Too Low  → range becomes 63-74
+  Guess 4: 68 → Too Low  → range becomes 69-74
+  Guess 5: 71 → Too Low  → range becomes 72-74
+  Guess 6: 73 → Win!
+
+RANGE NARROWING
+---------------
+After each guess, update your valid range:
+  - If outcome is "Too High": new_high = guess - 1
+  - If outcome is "Too Low":  new_low  = guess + 1
+Never guess outside your known valid range — it wastes attempts.
+
+DIFFICULTY STRATEGY
+-------------------
+Easy   (1-20,  6 attempts): Binary search wins in max 5 guesses. Very forgiving.
+Normal (1-100, 8 attempts): Binary search wins in max 7 guesses. One spare attempt.
+Hard   (1-500, 5 attempts): Binary search wins in max 9 guesses. NOT enough!
+  Hard mode requires trisection: split the range into thirds each turn.
+  Trisection of 500 numbers: 500 → 167 → 56 → 19 → 7 → 3 → 1 (6 steps max).
+
+COMMON MISTAKES
+---------------
+1. Guessing randomly instead of at the midpoint.
+2. Forgetting to update the valid range after each guess.
+3. Re-guessing a number that was already tried.
+4. In Hard mode, using binary search (needs 9 steps) instead of trisection (needs 6).
+
+SCORING TIPS
+------------
+- Win on attempt 1: +90 points (100 - 10*1)
+- Win on attempt 5: +50 points (100 - 10*5)
+- Each wrong guess: -5 points
+- Minimum win bonus: 10 points (floors at attempt 10+)
+- Optimal play maximizes wins per attempt.
