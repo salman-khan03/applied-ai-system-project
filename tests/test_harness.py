@@ -111,10 +111,36 @@ def tc_rate_limit_enforced():
     assert ok_before and not ok_at
 
 
+def tc_specialization_modes_exist():
+    """Specialization: both Coach and Analyst modes are registered."""
+    from ai_assistant import list_modes, get_mode_label
+    modes = list_modes()
+    assert "coach" in modes, "coach mode missing"
+    assert "analyst" in modes, "analyst mode missing"
+    assert "Coach" in get_mode_label("coach")
+    assert "Analyst" in get_mode_label("analyst")
+
+
+def tc_specialization_builds_messages():
+    """Specialization: few-shot messages are prepended for each mode."""
+    from ai_assistant import _build_few_shot_messages
+    coach_msgs = _build_few_shot_messages("test prompt", "coach")
+    analyst_msgs = _build_few_shot_messages("test prompt", "analyst")
+    # few-shot examples + real message = at least 3 messages (2 examples + 1 user)
+    assert len(coach_msgs) >= 3, "Coach mode should prepend few-shot examples"
+    assert len(analyst_msgs) >= 3, "Analyst mode should prepend few-shot examples"
+    # last message is always the real user prompt
+    assert coach_msgs[-1]["role"] == "user"
+    assert analyst_msgs[-1]["role"] == "user"
+    # coach and analyst differ in their examples
+    assert coach_msgs[1]["content"] != analyst_msgs[1]["content"], \
+        "Coach and Analyst responses should measurably differ"
+
+
 # ── Runner ────────────────────────────────────────────────────────────────────
 
 TESTS = [
-    ("Binary search wins in ≤7 guesses", tc_binary_search_convergence),
+    ("Binary search wins in <=7 guesses", tc_binary_search_convergence),
     ("Guardrail: blocks script injection", tc_guardrail_blocks_injection),
     ("Guardrail: accepts valid boundary values", tc_guardrail_valid_boundary),
     ("Score: does not go negative", tc_score_does_not_go_negative),
@@ -125,6 +151,8 @@ TESTS = [
     ("Evaluation: hint relevance scorer works", tc_hint_relevance_scorer),
     ("Sanitizer: strips injection patterns", tc_sanitize_strips_injection),
     ("Rate limiter: enforces request cap", tc_rate_limit_enforced),
+    ("Specialization: both modes are registered", tc_specialization_modes_exist),
+    ("Specialization: few-shot messages differ by mode", tc_specialization_builds_messages),
 ]
 
 
