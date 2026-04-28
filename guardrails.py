@@ -61,11 +61,9 @@ def sanitize_ai_response(text: str, max_length: int = 500) -> str:
 
 
 def check_api_key_configured() -> tuple[bool, str]:
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    key = os.environ.get("GOOGLE_GEMINI_API_KEY", "")
     if not key:
-        return False, "ANTHROPIC_API_KEY not set. AI features disabled."
-    if not key.startswith("sk-ant-"):
-        return False, "API key format appears invalid."
+        return False, "GOOGLE_GEMINI_API_KEY not set. AI features disabled."
     return True, "API key configured."
 
 

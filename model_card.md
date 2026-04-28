@@ -4,11 +4,10 @@
 
 | Field | Value |
 |-------|-------|
-| Model | claude-haiku-4-5-20251001 (Anthropic) |
-| Version | Haiku 4.5 |
-| Access | Anthropic API |
-| Prompt caching | Enabled on system prompts |
-| Max tokens per call | 150 (hints), 200 (analysis), 250 (agent) |
+| Model | gemini-2.0-flash-lite (Google) |
+| Version | 2.0 Flash Lite |
+| Access | Google Gemini API |
+| Max tokens per call | 80 (hints), 120 (analysis), 120 (agent) |
 
 ## Intended Use
 
@@ -53,7 +52,7 @@ This is a low-risk educational application. Potential misuse scenarios and mitig
 
 **Helpful suggestion:** When designing the agentic loop, Claude suggested separating the deterministic steps (observe: compute valid range; plan: pick midpoint) from the probabilistic step (reason: explain and assess risk). This hybrid approach made the agent reliable — it never fails to produce a valid recommendation even if the LLM returns invalid JSON, because the fallback uses the deterministic plan.
 
-**Incorrect suggestion:** Claude suggested including `altair<5` in `requirements.txt` for Streamlit compatibility. This constraint is outdated — Streamlit ≥1.32 removed the Altair version dependency. Including it would cause installation conflicts. I removed it and verified the app runs correctly with Altair 5.x.
+**Incorrect suggestion:** Claude suggested switching to `gemini-1.5-flash` to avoid quota errors, but that model is not available in the `google-genai` v1 SDK (returns a 404). The correct fix was switching to `gemini-2.0-flash-lite`, which has its own free-tier quota.
 
 ## Responsible Design Choices
 

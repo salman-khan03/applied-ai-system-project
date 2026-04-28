@@ -30,9 +30,75 @@ Players guess a secret number in a chosen difficulty range. At any point they ca
 
 ## System Architecture
 
-![System Architecture Diagram](assets/architecture_diagram.png)
+```mermaid
+flowchart TD
+    Player(["Player"])
 
-> **Note:** To regenerate the diagram, copy the Mermaid source from [assets/architecture.md](assets/architecture.md) into [mermaid.live](https://mermaid.live), then export as PNG and save as `assets/architecture_diagram.png`.
+    Player -->|"guess input"| GR["Guardrails
+guardrails.py
+validate + log"]
+
+    GR -->|"valid input"| GL["Game Logic
+logic_utils.py
+check_guess / score"]
+
+    GL -->|"outcome + log"| UI["Streamlit UI
+app.py"]
+
+    UI -->|"hint request + mode"| AI["AI Assistant
+ai_assistant.py"]
+
+    UI -->|"agent request"| AG["Agent Planner
+agent.py"]
+
+    AI -->|"1 retrieve tags"| RAG["RAG Retriever
+rag_retriever.py"]
+
+    RAG -->|"query"| KB1[("Knowledge Base
+8 entries")]
+
+    RAG -->|"read chunks"| KB2[("Strategy Guide
+game_strategy_guide.txt")]
+
+    RAG -->|"context docs"| AI
+
+    AI -->|"2 mode selection"| SPEC["Specialization
+Coach Mode
+Analyst Mode
+few-shot examples"]
+
+    SPEC -->|"specialized prompt"| AI
+
+    AI -->|"3 grounded prompt"| LLM["Gemini 2.0 Flash Lite
+Google Gemini API"]
+
+    LLM -->|"hint text"| AI
+    AI -->|"sanitized hint"| UI
+
+    AG -->|"step 1 observe"| OB["Observe
+compute valid range"]
+    AG -->|"step 2 plan"| PL["Plan
+binary search or trisect"]
+    AG -->|"step 3 reason"| LLM
+    LLM -->|"JSON plan"| AG
+    AG -->|"recommendation"| UI
+
+    GL -->|"log event"| LOG[("game.log")]
+    AI -->|"log latency"| LOG
+    GR -->|"log errors"| LOG
+
+    UI -->|"post-game"| EVAL["Evaluation
+evaluation.py
+relevance + latency score"]
+
+    EVAL -->|"metrics"| UI
+
+    style LLM fill:#ff9900,color:#fff,stroke:#cc7700
+    style KB1 fill:#4CAF50,color:#fff
+    style KB2 fill:#4CAF50,color:#fff
+    style LOG fill:#9E9E9E,color:#fff
+    style SPEC fill:#9C27B0,color:#fff
+```
 
 **Data flow summary:**
 
@@ -43,8 +109,8 @@ Player input
       → Streamlit UI (two-column layout)
         ├── AI Assistant → RAG Retriever (KB + text file)
         │                → Specialization (Coach/Analyst few-shot)
-        │                → Claude Haiku 4.5 (prompt caching)
-        └── Agent Planner → Observe → Plan → Claude Haiku 4.5 (JSON reasoning)
+        │                → Gemini 2.0 Flash Lite (few-shot generation)
+        └── Agent Planner → Observe → Plan → Gemini 2.0 Flash Lite (JSON reasoning)
   → Evaluation (relevance + latency scoring)
   → game.log (all events timestamped)
 ```
@@ -56,7 +122,7 @@ Player input
 | Retrieval | Tag-based RAG (2 sources) | `rag_retriever.py` |
 | Specialization | Few-shot Coach / Analyst modes | `ai_assistant.py` |
 | Agentic planning | Observe → Plan → Reason | `agent.py` |
-| Inference | Claude Haiku 4.5 w/ prompt caching | Anthropic API |
+| Inference | Gemini 2.0 Flash Lite | Google AI (Gemini API) |
 | UI | Streamlit wide-layout, session state | `app.py` |
 | Reliability | Hint scoring + test harness | `evaluation.py` |
 
@@ -64,7 +130,7 @@ Player input
 
 ## Setup Instructions
 
-**Prerequisites:** Python 3.9+, an Anthropic API key
+**Prerequisites:** Python 3.9+, a Google Gemini API key (get one free at [aistudio.google.com](https://aistudio.google.com/apikey))
 
 ```bash
 # 1. Clone the repo
@@ -75,8 +141,8 @@ cd applied-ai-system-project
 pip install -r requirements.txt
 
 # 3. Set your API key (AI features degrade gracefully without it — the game still works)
-export ANTHROPIC_API_KEY="sk-ant-..."   # macOS/Linux
-set ANTHROPIC_API_KEY=sk-ant-...        # Windows CMD
+export GOOGLE_GEMINI_API_KEY="AIza..."   # macOS/Linux
+set GOOGLE_GEMINI_API_KEY=AIza...        # Windows CMD
 
 # 4. Run the app
 python -m streamlit run app.py

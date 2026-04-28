@@ -5,16 +5,19 @@ Each intermediate step is returned so the UI can display the chain of thought.
 """
 
 import json
+import math
 import os
-import anthropic
+import re
+from google import genai
+from google.genai import types
 
-_client: anthropic.Anthropic | None = None
+_client: genai.Client | None = None
 
 
-def _get_client() -> anthropic.Anthropic:
+def _get_client() -> genai.Client:
     global _client
     if _client is None:
-        _client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        _client = genai.Client(api_key=os.environ.get("GOOGLE_GEMINI_API_KEY"))
     return _client
 
 
@@ -72,8 +75,10 @@ def _plan(observation: dict) -> dict:
     else:
         optimal = (cur_low + cur_high) // 2
 
-    import math
-    steps_remaining = math.ceil(math.log2(max(1, size))) if strategy == "binary_search" else math.ceil(math.log(max(1, size), 3))
+    if strategy == "binary_search":
+        steps_remaining = math.ceil(math.log2(max(1, size)))
+    else:
+        steps_remaining = math.ceil(math.log(max(1, size), 3))
 
     return {
         "step": "plan",
@@ -86,7 +91,7 @@ def _plan(observation: dict) -> dict:
 
 def _reason(observation: dict, plan: dict, guess_history: list) -> dict:
     """Step 3: LLM reasoning call — produces structured JSON with confidence and risk."""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not os.environ.get("GOOGLE_GEMINI_API_KEY"):
         size = observation["range_size"]
         return {
             "step": "reason",
@@ -98,35 +103,29 @@ def _reason(observation: dict, plan: dict, guess_history: list) -> dict:
             "risk": "low" if size < 10 else ("medium" if size < 50 else "high"),
         }
 
-    messages = [
-        {
-            "role": "user",
-            "content": (
-                f"Game state:\n{json.dumps(observation, indent=2)}\n\n"
-                f"Proposed plan:\n{json.dumps(plan, indent=2)}\n\n"
-                f"Guess history: {json.dumps(guess_history)}\n\n"
-                "Evaluate this plan and return your reasoning as JSON."
-            ),
-        }
-    ]
+    size = observation["range_size"]
+    vr = observation["valid_range"]
+    prompt = (
+        f"range:[{vr[0]},{vr[1]}] size:{size} "
+        f"strategy:{plan['strategy']} guess:{plan['optimal_next_guess']} "
+        f"history:{[(e['guess'], e['outcome']) for e in guess_history]}"
+    )
 
     try:
-        response = _get_client().messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=250,
-            system=[
-                {
-                    "type": "text",
-                    "text": _AGENT_SYSTEM,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            messages=messages,
+        response = _get_client().models.generate_content(
+            model="gemini-2.0-flash-lite",
+            config=types.GenerateContentConfig(
+                system_instruction=_AGENT_SYSTEM,
+                max_output_tokens=120,
+            ),
+            contents=prompt,
         )
-        result = json.loads(response.content[0].text)
+        raw = re.sub(r"^```(?:json)?\s*", "", response.text.strip())
+        raw = re.sub(r"\s*```$", "", raw).strip()
+        result = json.loads(raw)
         result["step"] = "reason"
         return result
-    except (json.JSONDecodeError, Exception) as e:
+    except Exception as e:
         size = observation["range_size"]
         return {
             "step": "reason",

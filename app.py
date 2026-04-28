@@ -6,6 +6,9 @@ agentic planning, guardrails, and reliability logging.
 
 import random
 import streamlit as st
+from dotenv import load_dotenv
+from google.genai.errors import ClientError
+load_dotenv()
 
 from logic_utils import get_range_for_difficulty, parse_guess, check_guess, update_score
 from guardrails import (
@@ -55,7 +58,7 @@ st.sidebar.subheader("AI Status")
 if api_ok:
     st.sidebar.success("AI features enabled")
 else:
-    st.sidebar.warning("AI disabled — set ANTHROPIC_API_KEY")
+    st.sidebar.warning("AI disabled — set GOOGLE_GEMINI_API_KEY")
 
 st.sidebar.divider()
 st.sidebar.subheader("Debug Knowledge Base")
@@ -110,8 +113,9 @@ def _show_post_analysis(won: bool) -> None:
                     won, low, high,
                 )
                 st.session_state.post_analysis = sanitize_ai_response(analysis)
-        except (ImportError, RuntimeError, ValueError, TimeoutError) as e:
+        except (ImportError, RuntimeError, ValueError, TimeoutError, ClientError) as e:
             log_error("post_analysis", e)
+            st.warning(f"AI analysis unavailable: {e}")
     if st.session_state.post_analysis:
         st.info(f"AI Review: {st.session_state.post_analysis}")
 
@@ -226,7 +230,7 @@ with col_ai:
         st.warning(api_msg)
         st.markdown(
             "To enable AI features, set your API key:\n"
-            "```\nexport ANTHROPIC_API_KEY=sk-ant-...\n```"
+            "```\nexport GOOGLE_GEMINI_API_KEY=...\n```"
         )
     else:
         # ── RAG + few-shot hint ───────────────────────────────────────────────
@@ -252,7 +256,7 @@ with col_ai:
                     st.session_state.ai_hint = sanitize_ai_response(hint)
                     st.session_state.ai_hint_mode = label
                     st.session_state["ai_requests"] += 1
-            except (ImportError, RuntimeError, ValueError) as e:
+            except (ImportError, RuntimeError, ValueError, ClientError) as e:
                 st.error(f"AI hint failed: {e}")
 
         if st.session_state.ai_hint:
@@ -309,5 +313,5 @@ with col_ai:
 st.divider()
 st.caption(
     "Extended from Game Glitch Investigator (CodePath AI 110, Module 2) "
-    "with claude-haiku-4-5-20251001"
+    "with gemini-2.0-flash-lite"
 )

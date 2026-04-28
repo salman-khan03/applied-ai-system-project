@@ -44,9 +44,8 @@ few-shot examples"]
 
     SPEC -->|"specialized prompt"| AI
 
-    AI -->|"3 grounded prompt"| LLM["Claude Haiku 4.5
-Anthropic API
-prompt caching ON"]
+    AI -->|"3 grounded prompt"| LLM["Gemini 2.0 Flash Lite
+Google Gemini API"]
 
     LLM -->|"hint text"| AI
     AI -->|"sanitized hint"| UI
@@ -85,6 +84,6 @@ relevance + latency score"]
 | Retrieval | RAG Retriever | Two sources: structured KB + text file |
 | Specialization | AI Assistant | Few-shot Coach/Analyst modes constrain LLM tone |
 | Planning | Agent | Observe → Plan → Reason with visible steps |
-| Inference | Claude Haiku 4.5 | Shared LLM with prompt caching |
+| Inference | Gemini 2.0 Flash Lite | Shared LLM for hints, analysis, and agent reasoning |
 | Output | Streamlit UI | Two-column layout: game + AI panel |
 | Reliability | Evaluation + Tests | 44 unit tests + 11 harness tests + live metrics |
