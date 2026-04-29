@@ -265,7 +265,7 @@ tests/test_harness.py       13 scenario tests end-to-end scenarios, RAG, agent, 
 
 ## Video Walkthrough
 
-[INSERT LOOM LINK HERE — record a 5–7 min walkthrough showing: 2–3 full game inputs, AI hint behavior in both modes, agent planner output, and at least one guardrail block]
+[https://www.loom.com/share/98a43f0c35624923a85fe6a30e941734]
 
 ---
 
