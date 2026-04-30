@@ -1,5 +1,53 @@
 # Game Glitch Investigator: Applied AI System
 
+## TL;DR (one sentence)
+
+“This is an applied AI system project where I built a Streamlit-based game assistant with a RAG hint engine, guardrails, an observable agentic planner, and an evaluation harness using Python, Streamlit, pytest, and the Google Gemini API to help users play and learn optimal strategies in a number-guessing game; I’m happy to walk through the architecture and my design decisions during the interview.”
+
+## Problem it Solves (MLH-friendly)
+
+A lot of AI “assistant” demos give generic, ungrounded hints and don’t have clear safety or evaluation. This project turns a simple number‑guessing game into a **deployable applied AI system** that provides **grounded strategy hints** (via retrieval), **reliable recommendations** (deterministic observe/plan + structured LLM reasoning), and **guardrails + tests + evaluation** so the AI behavior can be measured and discussed like a real system.
+
+## Tech Stack
+
+- **Python 3.9+**
+- **Streamlit** (UI + session state)
+- **Google Gemini API** (Gemini 2.0 Flash Lite) for generation + agent reasoning
+- **RAG (lightweight tag-based retrieval)** over:
+  - internal KB entries (in code)
+  - `assets/game_strategy_guide.txt`
+- **pytest** for testing (runs without an API key)
+
+## My Role / Scope (what I built, with paths)
+
+This repo started from a small intentionally broken Streamlit lab project. The applied AI system components below are the substantive work I implemented and are what I’d walk through in an interview:
+
+- **UI + game orchestration (Streamlit, session state):** `app.py`
+- **Game logic utilities / scoring:** `logic_utils.py`
+- **AI assistant (modes + prompting + grounding):** `ai_assistant.py`
+- **RAG retrieval layer (two-source retriever):** `rag_retriever.py`, `assets/game_strategy_guide.txt`
+- **Agentic planner (Observe → Plan deterministic; Reason via LLM JSON + fallback):** `agent.py`
+- **Guardrails (validation, sanitization, rate limiting, structured logging):** `guardrails.py`
+- **Evaluation harness (hint scoring + reliability metrics):** `evaluation.py`
+- **Tests (no API key required):** `tests/test_game_logic.py`, `tests/test_guardrails.py`, `tests/test_harness.py`
+- **Documentation:** `model_card.md`, `reflection.md`, `assets/architecture.md`
+
+## How to run locally (quick start)
+
+```bash
+git clone https://github.com/salman-khan03/applied-ai-system-project.git
+cd applied-ai-system-project
+pip install -r requirements.txt
+
+# Optional: enable AI features
+export GOOGLE_GEMINI_API_KEY="YOUR_KEY"   # macOS/Linux
+# set GOOGLE_GEMINI_API_KEY=YOUR_KEY      # Windows CMD
+
+python -m streamlit run app.py
+```
+
+---
+
 ## What I Personally Added (Beyond the Base Lab)
 
 This repository started from a **small, intentionally broken Streamlit number‑guessing game** provided as part of **CodePath AI110 (Week 3 — Module 2 Debugging Lab)**.
