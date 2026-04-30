@@ -1,18 +1,34 @@
 # Game Glitch Investigator: Applied AI System
 
+## What I Personally Added (Beyond the Base Lab)
+
+This repository started from a **small, intentionally broken Streamlit number‑guessing game** provided as part of **CodePath AI110 (Week 3 — Module 2 Debugging Lab)**.
+
+**Everything listed below was implemented by me as an extension** to turn that starter lab into a complete applied AI system suitable for end‑users and for technical discussion:
+
+- **RAG hint engine** with a two-source retriever (knowledge-base entries + a strategy text guide)
+- **Two specialized AI modes** (Coach / Analyst) using distinct system prompts + few-shot examples
+- **Observable agentic planner** (Observe → Plan are deterministic; Reason uses the LLM with JSON output + fallback)
+- **Guardrails**: validation, sanitization, rate limiting, and structured logging
+- **Reliability evaluation**: automated hint scoring + offline/live evaluation harness
+- **Test suite** (multiple files) that runs without an API key
+- **Documentation**: system architecture diagram, model card, and reflection
+
+> Note: The base lab primarily covered debugging/fixing the original game issues (e.g., Streamlit session state). The AI system components above are the substantive work and the focus of this code sample.
+
 ## Base Project
 
 **Original Project:** Game Glitch Investigator (CodePath AI110, Week 3 — Module 2 Debugging Lab)
 
-The original project was a broken Streamlit number-guessing game with two intentional bugs: the secret number reset on every button click due to missing Streamlit session state, and the Higher/Lower hints were inverted (guessing too high told the player to go higher). The assignment was to find and fix the bugs, move logic into `logic_utils.py`, and write pytest tests to confirm the fixes.
+The original project was a broken Streamlit number-guessing game with two intentional bugs: the secret number reset on every button click due to missing Streamlit session state, and the Higher/Lower feedback logic was incorrect. 
 
-**This Project 4 extension** evolves that debugged game into a full applied AI system by adding a RAG-powered hint engine, an observable agentic planner, two specialized AI modes, input/output guardrails, and a reliability evaluation layer.
+**This Project 4 extension** evolves that debugged game into a full applied AI system by adding a RAG-powered hint engine, an observable agentic planner, two specialized AI modes, input/output guardrails, structured logging, and automated reliability evaluation.
 
 ---
 
 ## What the System Does
 
-Players guess a secret number in a chosen difficulty range. At any point they can request an AI-generated hint (backed by retrieved strategy documents) or run an AI planning agent that observes the game state, computes the optimal next guess, and explains its reasoning. After the game ends, the AI delivers a post-game performance analysis. Every AI interaction is validated, logged, rate-limited, and scored for relevance.
+Players guess a secret number in a chosen difficulty range. At any point they can request an AI-generated hint (backed by retrieved strategy documents) or run an AI planning agent that observes the current game state and recommends an optimal next guess.
 
 ---
 
@@ -21,8 +37,8 @@ Players guess a secret number in a chosen difficulty range. At any point they ca
 | Feature | What It Adds |
 |---------|-------------|
 | **RAG Hint Engine** | Retrieves relevant strategy documents from an 8-entry knowledge base and a text guide before generating a hint — grounds the response in real context rather than hallucinating |
-| **Few-Shot Specialization** | Two selectable AI modes: Coach (encouraging, sports analogies) and Analyst (mathematical, probability-focused) — each mode uses a distinct system prompt plus 2 few-shot examples to constrain tone |
-| **Agentic Planning Workflow** | Observable 3-step agent: (1) Observe — deterministically computes the valid range from guess history; (2) Plan — selects binary search or trisection strategy; (3) Reason — LLM explains the plan and rates confidence and risk |
+| **Few-Shot Specialization** | Two selectable AI modes: Coach (encouraging, sports analogies) and Analyst (mathematical, probability-focused) — each mode uses a distinct system prompt plus 2 few-shot examples |
+| **Agentic Planning Workflow** | Observable 3-step agent: (1) Observe — deterministically computes the valid range from guess history; (2) Plan — selects binary search or trisection strategy; (3) Reason — LLM provides structured JSON reasoning with fallback |
 | **Guardrails** | Input validation, response sanitization (blocks XSS/injection patterns), rate limiting (15 AI calls/game), and structured logging |
 | **Reliability Evaluation** | Scores each AI hint on 4 dimensions: strategy mention, appropriate length, non-empty output, and secret not revealed. Runs live or offline. |
 
@@ -166,7 +182,7 @@ The app opens at `http://localhost:8501`. Select a difficulty, enter guesses in 
 **RAG retrieves:** `range_update` entry ("After each guess, eliminate the impossible half") + `binary_search` entry
 
 **AI output:**
-> "Great work narrowing it down — you've eliminated over 75% of the range already! Your valid zone is 51–74. If you pick the midpoint (62), you'll cut it in half again and close in fast. You've got this!"
+> "Great work narrowing it down — you've eliminated over 75% of the range already! Your valid zone is 51–74. If you pick the midpoint (62), you'll cut it in half again and close in fast. ..."
 
 **Hint relevance score:** 0.88 / 1.0 (mentions strategy, appropriate length, no secret revealed)
 
@@ -177,7 +193,7 @@ The app opens at `http://localhost:8501`. Select a difficulty, enter guesses in 
 **Player clicks:** Get AI Hint (Analyst mode selected)
 
 **AI output:**
-> "Valid range: 51–74 (24 values remaining, down from 100). Optimal next guess: 62 (midpoint). Expected guesses to resolve: ≤2 with binary search. Probability of winning this turn if you guess 62: 4.2%."
+> "Valid range: 51–74 (24 values remaining, down from 100). Optimal next guess: 62 (midpoint). Expected guesses to resolve: ≤2 with binary search. ..."
 
 ---
 
@@ -241,7 +257,7 @@ tests/test_harness.py       13 scenario tests end-to-end scenarios, RAG, agent, 
 - Average hint relevance score: 0.75 / 1.0
 - Average latency: ~800ms
 
-**Known failure mode:** When the valid range shrinks to 1–2 values, the agent's LLM reasoning step occasionally returns malformed JSON. The fallback uses the deterministic plan, so the system never crashes — but the confidence score defaults to 0.5 instead of the correct 1.0.
+**Known failure mode:** When the valid range shrinks to 1–2 values, the agent's LLM reasoning step occasionally returns malformed JSON. The fallback uses the deterministic plan, so the system never fails hard.
 
 **What the guardrail examples show:**
 - `validate_guess_input("<script>alert(1)</script>")` → blocked (non-numeric)
@@ -253,13 +269,13 @@ tests/test_harness.py       13 scenario tests end-to-end scenarios, RAG, agent, 
 
 ## Design Decisions and Trade-offs
 
-**Tag-based RAG over semantic search:** Simple and fast, no embedding model required. Trade-off: unusual queries may return irrelevant docs. Acceptable for a closed-domain game assistant with predictable query patterns.
+**Tag-based RAG over semantic search:** Simple and fast, no embedding model required. Trade-off: unusual queries may return irrelevant docs. Acceptable for a closed-domain game assistant with predefined strategy tags.
 
-**Hybrid deterministic + LLM agent:** Steps 1 and 2 (observe, plan) are pure math — they never fail. The LLM only handles step 3 (reasoning text). If the LLM returns bad JSON, the agent falls back to the deterministic plan. This means the agent is always useful even without an API key.
+**Hybrid deterministic + LLM agent:** Steps 1 and 2 (observe, plan) are pure math — they never fail. The LLM only handles step 3 (reasoning text). If the LLM returns bad JSON, the agent falls back to the deterministic plan.
 
 **Prompt caching on system prompts:** The system prompts are long (few-shot examples + mode instructions). Caching them reduces cost and latency on repeat calls in the same game session.
 
-**Streamlit session state isolation:** When the player changes difficulty, the full session resets (new secret, cleared history, zeroed score). Without this, old guess history from a 1–20 game would pollute a new 1–500 game.
+**Streamlit session state isolation:** When the player changes difficulty, the full session resets (new secret, cleared history, zeroed score). Without this, old guess history from a 1–20 game would leak into a 1–100 game.
 
 ---
 
